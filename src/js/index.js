@@ -1,5 +1,5 @@
 import { $ } from './utils/dom.js';
-import store from './store/index.js';
+import MenuApi from './api/index.js';
 
 function App() {
   this.menu = {
@@ -12,21 +12,17 @@ function App() {
 
   this.currentCategory = 'espresso';
 
-  this.init = () => {
-    if (store.getLocalStorage('menu')) {
-      this.menu = store.getLocalStorage('menu');
-      render();
-    }
-
+  this.init = async () => {
+    render();
     initEventListeners();
   };
 
-  const render = () => {
-    const menuItemTemplate = (
-      menuItem,
-      id,
-    ) => `<li data-menu-id="${id}" class="menu-list-item d-flex items-center py-2">
-        <span class="${menuItem.soldOut ? 'sold-out' : ''} w-100 pl-2 menu-name">${menuItem.name}</span>
+  const render = async () => {
+    this.menu[this.currentCategory] = await MenuApi.getAllMenuByCategory(this.currentCategory);
+    const menuItemTemplate = (menuItem) => `<li data-menu-id="${
+      menuItem.id
+    }" class="menu-list-item d-flex items-center py-2">
+        <span class="${menuItem.isSoldOut ? 'sold-out' : ''} w-100 pl-2 menu-name">${menuItem.name}</span>
         <button
           type="button"
           class="bg-gray-50 text-gray-500 text-sm mr-1 menu-sold-out-button"
@@ -47,7 +43,7 @@ function App() {
         </button>
       </li>`;
 
-    const menuList = this.menu[this.currentCategory].map((item, index) => menuItemTemplate(item, index));
+    const menuList = this.menu[this.currentCategory].map((item) => menuItemTemplate(item));
     $('#menu-list').innerHTML = menuList.join('');
 
     updateMenuCount();
@@ -58,44 +54,56 @@ function App() {
     $('.menu-count').innerText = `총 ${menuCount}개`;
   };
 
-  const addMenuName = () => {
-    const MenuName = $('#menu-name').value;
+  const addMenuName = async () => {
+    const menuName = $('#menu-name').value;
 
-    if (!MenuName) {
+    if (!menuName) {
       alert('값을 입력해주세요.');
       return;
     }
 
-    this.menu[this.currentCategory].push({ name: MenuName });
-    store.setLocalStorage('menu', this.menu);
+    const duplicatedItem = this.menu[this.currentCategory].find((menuItem) => menuItem.name === menuName);
+    if (duplicatedItem) {
+      alert('이미 등록된 메뉴입니다. 다시 입력해주세요.');
+      $('#menu-name').value = '';
+      return;
+    }
 
+    await MenuApi.createMenu(this.currentCategory, menuName);
     render();
     $('#menu-name').value = '';
   };
 
-  const updateMenuName = (event) => {
+  const updateMenuName = async (event) => {
     const menuId = event.target.closest('.menu-list-item').dataset.menuId;
     const $menuName = event.target.closest('.menu-list-item').querySelector('.menu-name');
     const updatedMenuName = prompt('메뉴명을 수정하세요.', $menuName.innerText);
-    this.menu[this.currentCategory][menuId].name = updatedMenuName;
-    store.setLocalStorage('menu', this.menu);
+    await MenuApi.updateMenu(this.currentCategory, menuId, updatedMenuName);
     render();
   };
 
-  const removeMenuName = (event) => {
+  const removeMenuName = async (event) => {
     if (confirm('정말 삭제하시겠습니까?')) {
       const menuId = event.target.closest('.menu-list-item').dataset.menuId;
-      this.menu[this.currentCategory].splice(menuId, 1);
-      store.setLocalStorage('menu', this.menu);
+      await MenuApi.deleteMenu(this.currentCategory, menuId);
       render();
     }
   };
 
-  const soldOutMenu = (event) => {
+  const soldOutMenu = async (event) => {
     const menuId = event.target.closest('.menu-list-item').dataset.menuId;
-    this.menu[this.currentCategory][menuId].soldOut = !this.menu[this.currentCategory][menuId].soldOut;
-    store.setLocalStorage('menu', this.menu);
+    await MenuApi.toggleSoldOutMenu(this.currentCategory, menuId);
     render();
+  };
+
+  const selectCategory = (event) => {
+    const $cafeCategoryName = event.target.closest('.cafe-category-name');
+    if ($cafeCategoryName) {
+      const categoryName = $cafeCategoryName.dataset.categoryName;
+      this.currentCategory = categoryName;
+      $('#category-title').innerText = `${$cafeCategoryName.innerText} 메뉴 관리`;
+      render();
+    }
   };
 
   const initEventListeners = () => {
@@ -129,16 +137,7 @@ function App() {
       }
     });
 
-    $('nav').addEventListener('click', (event) => {
-      const $cafeCategoryName = event.target.closest('.cafe-category-name');
-      if ($cafeCategoryName) {
-        const categoryName = $cafeCategoryName.dataset.categoryName;
-        this.currentCategory = categoryName;
-        $('#category-title').innerText = `${$cafeCategoryName.innerText} 메뉴 관리`;
-
-        render();
-      }
-    });
+    $('nav').addEventListener('click', selectCategory);
   };
 }
 
